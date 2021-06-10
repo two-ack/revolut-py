@@ -25,10 +25,21 @@ from revolut import Revolut, __version__
     help='your Revolut token (or set the env var REVOLUT_TOKEN)',
 )
 @click.option(
+    '--password', '-p',
+    envvar="REVOLUT_PASSWORD",
+    type=str,
+    help='your Revolut pin/password (or set the env var REVOLUT_PASSWORD)',
+)
+@click.option(
+    '--phone', '-P',
+    envvar="REVOLUT_PHONE",
+    type=str,
+    help='your Revolut phone number (or set the env var REVOLUT_PHONE)',
+)
+@click.option(
     '--channel', '-c',
     type=click.Choice(['EMAIL', 'SMS', 'APP']),
     help='auth channel to use',
-    default='EMAIL'
  )
 @click.option(
     '--language', '-l',
@@ -37,13 +48,13 @@ from revolut import Revolut, __version__
     default='en'
 )
 @click.option(
-    '--from_date', '-t',
+    '--from-date', '-F',
     type=click.DateTime(formats=["%Y-%m-%d"]),
     help='transactions lookback date in YYYY-MM-DD format (ex: "2019-10-26"). Default 30 days back',
     default=(datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
 )
 @click.option(
-    '--output_format', '-fmt',
+    '--output-format', '-f',
     type=click.Choice(['csv', 'json']),
     help="output format",
     default='csv',
@@ -53,16 +64,9 @@ from revolut import Revolut, __version__
     is_flag=True,
     help='reverse the order of the transactions displayed',
 )
-def main(device_id, token, channel, language, from_date, output_format, reverse):
+def main(device_id, token, password, phone, channel, language, from_date, output_format, reverse):
     """ Get the account balances on Revolut """
-    if device_id is None:
-        print("You don't seem to have a Revolut device_id. Use 'revolut_cli' to obtain one")
-        exit(1)
-    elif token is None:
-        print("You don't seem to have a Revolut token. Use 'revolut_cli' to obtain one")
-        exit(1)
-
-    rev = Revolut(device_id=device_id, token=token)
+    rev = Revolut(device_id=device_id, token=token, password=password, phone=phone, channel=channel, interactive=True)
     account_transactions = rev.get_account_transactions(from_date)
     if output_format == 'csv':
         print(account_transactions.csv(lang=language, reverse=reverse))

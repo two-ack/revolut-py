@@ -1,2 +1,4 @@
 requests>=2.6.0
 click>=6.7
+appdirs>=1.4.3
+retry-decorator>=1.1.1
