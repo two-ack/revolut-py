@@ -4,22 +4,26 @@ This package allows you to communicate with your Revolut accounts
 """
 
 import base64
+import time
+import string
 from datetime import datetime
 import json
 import requests
 from urllib.parse import urljoin
+import os.path
 
 __version__ = '0.1.4'  # Should be the same in setup.py
 
-API_BASE = "https://api.revolut.com"
+API_BASE = "https://app.revolut.com/api/retail"
 _URL_GET_ACCOUNTS = API_BASE + "/user/current/wallet"
 _URL_GET_TRANSACTIONS_LAST = API_BASE + "/user/current/transactions/last"
 _URL_QUOTE = API_BASE + "/quote/"
 _URL_EXCHANGE = API_BASE + "/exchange"
 _URL_GET_TOKEN_STEP1 = API_BASE + "/signin"
 _URL_GET_TOKEN_STEP2 = API_BASE + "/signin/confirm"
+_URL_GET_TOKEN_STEP2_APP = API_BASE + '/token'
+_URL_SELFIE = API_BASE + '/biometric-signin/selfie'
 
-_DEFAULT_TOKEN_FOR_SIGNIN = "QXBwOlM5V1VuU0ZCeTY3Z1dhbjc="
 
 _AVAILABLE_CURRENCIES = ["USD", "RON", "HUF", "CZK", "GBP", "CAD", "THB",
                          "SGD", "CHF", "AUD", "ILS", "DKK", "PLN", "MAD",
@@ -130,34 +134,101 @@ class Transaction:
                                       self.to_amount))
 
 
+def token_encode(f, s):
+    token_to_encode = "{}:{}".format(f, s).encode("ascii")
+    # Ascii encoding required by b64encode function : 8 bits char as input
+    token = base64.b64encode(token_to_encode)
+    token = token.decode("ascii")
+
+    print('TOKEN to be included: {}'.format(token))
+    return token
+
+
 class Client:
     """ Do the requests with the Revolut servers """
-    def __init__(self, token, device_id):
+    def __init__(self, device_id, token=None):
         self.session = requests.session()
+        self.device_id = device_id
+        self.token = token
+        if type(token) in [tuple, list] and len(token) == 2:
+            self.token = token_encode(token[0], token[1])
+
+    def _set_hdrs(self):
         self.session.headers = {
-                    'Host': 'api.revolut.com',
-                    'X-Api-Version': '1',
-                    'X-Client-Version': '6.34.3',
-                    'X-Device-Id': device_id,
-                    'User-Agent': 'Revolut/5.5 500500250 (CLI; Android 4.4.2)',
-                    'Authorization': 'Basic '+token,
+                    'Host': 'app.revolut.com',
+                    'X-Client-Version': '100.0',
+                    'Origin': 'https://app.revolut.com',
+                    'Referer': 'https://app.revolut.com/login',
+                    'X-Device-Id': self.device_id,
+                    'x-browser-application': 'WEB_CLIENT',
+                    'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:87.0) Gecko/20100101 Firefox/87.0',
+                    #"x-client-geo-location": "36.51490,-4.88380",
+                    "Content-Type": "application/json;charset=utf-8",
+                    "Accept": "application/json, text/plain, */*",
+                    "Accept-Encoding": "gzip, deflate, br",
+                    "Accept-Language": "en-US,en;q=0.6",
+                    "Connection": "keep-alive",
+                    'Sec-GPC': '1',
+                    'DNT': '1',
+                    'TE': 'Trailers',
                     }
 
-    def _get(self, url, *, expected_status_code=200, **kwargs):
-        ret = self.session.get(url=url, **kwargs)
-        if ret.status_code != expected_status_code:
-            raise ConnectionError(
-                'Status code {} for url {}\n{}'.format(
-                    ret.status_code, url, ret.text))
-        return ret
+        if self.token is not None:
+            self.session.headers.update({'x-api-authorization': 'Basic ' + self.token})
 
-    def _post(self, url, *, expected_status_code=200, **kwargs):
+    def _verif_resp_code(self, ret, codes):
+        if type(codes) == int:
+            codes = [codes]
+
+        return ret.status_code in codes
+
+
+    def _get(self, url, *, expected_status_code=[200], **kwargs):
+        # print('!!!! going to GET for {}...'.format(url))
+
+        self._set_hdrs()
+        ret = self.session.get(url=url, **kwargs)
+
+        if self._verif_resp_code(ret, expected_status_code):
+            return ret
+
+        raise ConnectionError(
+            'Status code {} for url {} (expected any of {})\n{}'.format(
+                ret.status_code, url, expected_status_code, ret.text))
+
+
+    def _post(self, url, *, expected_status_code=[200], **kwargs):
+        # print('!!!! going to POST for {}...'.format(url))
+        self._set_hdrs()
+        if 'files' in kwargs and 'Content-Type' in self.session.headers:
+            # see https://stackoverflow.com/questions/12385179/how-to-send-a-multipart-form-data-with-requests-in-python#comment90652412_12385661 as to why
+            del self.session.headers['Content-Type']
+
         ret = self.session.post(url=url, **kwargs)
-        if ret.status_code != expected_status_code:
-            raise ConnectionError(
-                'Status code {} for url {}\n{}'.format(
-                    ret.status_code, url, ret.text))
-        return ret
+
+        ## DEBUG:
+        # print('--------------------')
+        # print('request-reponse dump:')
+        # if 'files' not in kwargs:
+            # from requests_toolbelt.utils import dump
+            # d = dump.dump_all(ret)
+            # print(d.decode('utf-8'))
+            # print('--------------------')
+
+        # print('!!reponse for {}:'.format(url))
+        # print(ret)
+        # print('!!reponse code:')
+        # print(ret.status_code)
+        # print('reponse txt:')
+        # print(ret.text)
+        # print('--------------------')
+
+        if self._verif_resp_code(ret, expected_status_code):
+            return ret
+
+        raise ConnectionError(
+            'Status code {} for url {} (expected any of {})\n{}'.format(
+                ret.status_code, url, expected_status_code, ret.text))
 
 
 class Revolut:
@@ -199,7 +270,11 @@ class Revolut:
                 break
             params['to'] = ret_transactions[-1]['startedDate']
             raw_transactions.extend(ret_transactions)
-        
+
+        # TODO: make sure dupes are filtered out from raw_transactions!
+        # really unsure why this 'to' is added - wouldn't we be basically
+        # repeating the request?
+
         return AccountTransactions(raw_transactions)
 
     def get_wallet_id(self):
@@ -339,7 +414,7 @@ class Accounts:
         (ex : accounts[1]) """
         return self.list[key]
 
-    def csv(self, lang="fr"):
+    def csv(self, lang="en"):
         lang_is_fr = lang == "fr"
         if lang_is_fr:
             csv_str = "Nom du compte;Solde;Devise"
@@ -467,18 +542,24 @@ class AccountTransactions:
         return csv_str.replace(".", ",") if lang_is_fr else csv_str
 
 
-def get_token_step1(device_id, phone, password, simulate=False):
+def get_token_step1(device_id, phone, password, channel, simulate=False):
     """ Function to obtain a Revolut token (step 1 : send a code by sms/email) """
     if simulate:
         return "SMS"
-    c = Client(device_id=device_id, token=_DEFAULT_TOKEN_FOR_SIGNIN)
-    data = {"phone": phone, "password": password}
+
+    c = Client(device_id=device_id)
+    data = {"phone": phone, "password": password, "channel": channel}
     ret = c._post(_URL_GET_TOKEN_STEP1, json=data)
-    channel = ret.json().get("channel")
-    return channel
+
+    if channel == 'APP':
+        return ret.json().get("tokenId")
+    elif channel in ['EMAIL', 'SMS']:
+        return True
+    else:
+        raise NotImplementedError('channel [{}] support not implemented'.format(channel))
 
 
-def get_token_step2(device_id, phone, code, simulate=False):
+def get_token_step2(device_id, phone, password, channel, token, simulate=False):
     """ Function to obtain a Revolut token (step 2 : with code) """
     if simulate:
         # Because we don't want to receive a code through sms
@@ -498,28 +579,86 @@ def get_token_step2(device_id, phone, code, simulate=False):
         "creditLimit":0}]},"accessToken":"myaccesstoken"}'
         raw_get_token = json.loads(simu)
     else:
-        c = Client(device_id=device_id, token=_DEFAULT_TOKEN_FOR_SIGNIN)
-        code = code.replace("-", "")  # If the user would put -
-        data = {"phone": phone, "code": code}
-        ret = c._post(_URL_GET_TOKEN_STEP2, json=data)
-        raw_get_token = ret.json()
+
+        c = Client(device_id=device_id)
+
+        if channel in ['EMAIL', 'SMS']:
+            while True:
+                code = input(
+                    "Please enter the 6 digit code you received by {} "
+                    "[ex : 123456] : ".format(channel)
+                )
+                code = code.replace("-", "").strip()  # If the user would put dashes in
+                if len(code) == 6 and all(d in string.digits for d in code):
+                    break
+                else:
+                    print('verification code should consist of 6 digits, but [{}] was provided'.format(code))
+
+            # TODO: unsure why, but on web first req is sent w/o password, followed by same payload w/ passwd added
+            data = {"phone": phone, "code": code}
+            res = c._post(_URL_GET_TOKEN_STEP2, expected_status_code=204, json=data)
+
+            data.update({"password": password})
+            res = c._post(_URL_GET_TOKEN_STEP2, expected_status_code=204, json=data)
+
+            data.update({"limitedAccess": False})
+            res = c._post(_URL_GET_TOKEN_STEP2, json=data)
+            res = res.json()
+        elif channel == 'APP':
+            data = {"phone": phone, "password": password, "tokenId": token}
+            ret = 422
+            count = 0
+            while ret == 422:
+                if count > 50:
+                    raise RuntimeError('waited for [{}] iterations for successful auth from mobile app (2FA)'.format(count))
+                time.sleep(3.5)
+                res = c._post(_URL_GET_TOKEN_STEP2_APP, expected_status_code=[200, 422], json=data)
+                ret = res.status_code
+                res = res.json()
+#             "text": "{\"message\":\"One should obtain consent from the user before continuing\",\"code\":9035}" response while waiting for app-based accepting
+                if ret != 200 and 'code' in res and res['code'] != 9035:
+                    raise ConnectionError(
+                        'Status code {} for url {}, but sent error code was unexpected: {}'.format(
+                            ret, _URL_GET_TOKEN_STEP2_APP, res['code']))
+                count += 1
+
+        raw_get_token = res
+
     return raw_get_token
+
 
 
 def extract_token(json_response):
     user_id = json_response["user"]["id"]
     access_token = json_response["accessToken"]
-    token_to_encode = "{}:{}".format(user_id, access_token).encode("ascii")
-    # Ascii encoding required by b64encode function : 8 bits char as input
-    token = base64.b64encode(token_to_encode)
-    return token.decode("ascii")
+    return token_encode(user_id, access_token)
 
 
-def signin_biometric(device_id, phone, access_token, selfie_filepath):
-    files = {"selfie": open(selfie_filepath, "rb")}
-    c = Client(device_id=device_id, token=_DEFAULT_TOKEN_FOR_SIGNIN)
-    c.session.auth = (phone, access_token)
-    res = c._post(API_BASE + "/biometric-signin/selfie", files=files)
+def signin_biometric(device_id, userId, access_token, selfie_filepath):
+    # define 'files' so request's file-part headers would look like:
+    # Content-Disposition: form-data; name="selfie"; filename="selfie.jpg"
+    # Content-Type: image/jpeg
+
+    if not os.path.isfile(selfie_filepath):
+        raise IOError('selected selfie file [{}] is not a valid file'.format(selfie_filepath))
+
+    c = Client(device_id=device_id, token=(userId, access_token))
+
+    with open(selfie_filepath, 'rb') as f:
+        files = {'selfie': ('selfie.jpg', f, 'image/jpeg')}
+        res = c._post(_URL_SELFIE, files=files)
+
     biometric_id = res.json()["id"]
-    res = c._post(API_BASE + "/biometric-signin/confirm/" + biometric_id)
+
+    ret = 204
+    count = 0
+    while ret == 204:
+        if count > 50:
+            raise RuntimeError('waited for [{}] iterations for successful biometric (3FA) confirmation response'.format(count))
+        time.sleep(2.1)
+        res = c._post(API_BASE + "/biometric-signin/confirm/" + biometric_id, expected_status_code=[200, 204])
+        ret = res.status_code
+        count += 1
+
     return res.json()
+

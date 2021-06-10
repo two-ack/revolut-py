@@ -21,7 +21,6 @@ _RETURN_CODE_ERROR = 2
     envvar="REVOLUT_DEVICE_ID",
     type=str,
     help='your Revolut token (or set the env var REVOLUT_DEVICE_ID)',
-    default='revolut_cli',
 )
 @click.option(
     '--token', '-t',

@@ -8,6 +8,7 @@ import sys
 
 from revolut import Revolut, __version__, get_token_step1, get_token_step2, signin_biometric, extract_token
 
+_3FAT = "thirdFactorAuthAccessToken"
 # Usage : revolut_cli.py --help
 
 @click.command()
@@ -27,33 +28,43 @@ from revolut import Revolut, __version__, get_token_step1, get_token_step2, sign
     '--language', '-l',
     type=str,
     help='language ("fr" or "en"), for the csv header and separator',
-    default='fr'
+    default='en'
 )
 @click.option(
     '--account', '-a',
     type=str,
     help='account name (ex : "EUR CURRENT") to get the balance for the account'
  )
+@click.option(
+    '--channel', '-c',
+    type=click.Choice(['EMAIL', 'SMS', 'APP']),
+    help='auth channel to use',
+    default='EMAIL'
+ )
 @click.version_option(
     version=__version__,
     message='%(prog)s, based on [revolut] package version %(version)s'
 )
-def main(device_id, token, language, account):
+def main(device_id, token, language, account, channel):
     """ Get the account balances on Revolut """
-    
+
     if token is None:
         print("You don't seem to have a Revolut token")
         answer = input("Would you like to generate a token [yes/no]? ")
         selection(answer)
-        device_id = 'cli_{}'.format(uuid.getnode())  # Unique id for a machine
+        device_id = str(uuid.uuid4())  # verify format from real web client
         while token is None:
             try:
-                token = get_token(device_id=device_id)
+                token = get_token(device_id=device_id, channel=channel)
             except Exception as e:
                 login_error_handler(e)
+    elif device_id is None:
+        print("When providing token, device_id is also required")
+        exit(1)
 
-    if device_id is None:
-        device_id = 'revolut_cli'  # For retro-compatibility
+    print('FIN: {}'.format(token))  # TODO remove
+    sys.exit(0)
+
     rev = Revolut(device_id=device_id, token=token)
     account_balances = rev.get_account_balances()
     if account:
@@ -62,49 +73,51 @@ def main(device_id, token, language, account):
         print(account_balances.csv(lang=language))
 
 
-def get_token(device_id):
+def get_token(device_id, channel):
     phone = input(
         "What is your mobile phone (used with your Revolut "
         "account) [ex : +33612345678] ? ")
     password = getpass(
         "What is your Revolut app password [ex: 1234] ? ")
-    verification_channel = get_token_step1(
+    tokenId = get_token_step1(
         device_id=device_id,
         phone=phone,
-        password=password
+        password=password,
+        channel=channel
     )
 
-    if verification_channel.upper() == "EMAIL":
-        print()
-        print("Your verification code has been sent by email.")
-        print("Take note of the link on the **Authenticate** button.")
-        print("It should look like https://revolut.com/app/email-authenticate/<CODE>?scope=login")
-
-    code = input(
-        "Please enter the 6 digit code you received by {} "
-        "[ex : 123456] : ".format(verification_channel)
-    )
+    print('!!!! got tokenid {}'.format(tokenId))
 
     response = get_token_step2(
         device_id=device_id,
         phone=phone,
-        code=code,
+        password=password,
+        channel=channel,
+        token=tokenId
     )
 
-    if "thirdFactorAuthAccessToken" in response:
-        access_token = response["thirdFactorAuthAccessToken"]
+
+    if _3FAT in response:
+        userId = response['user']['id']
+        access_token = response[_3FAT]
         print()
         print("Selfie 3rd factor authentication was requested.")
-        selfie_filepath = input(
-            "Provide a selfie image file path (800x600) [ex : selfie.png] ")
+        # selfie_filepath = input(
+            # "Provide a selfie image file path (800x600) [ex : selfie.png] ")
+        selfie_filepath = '/data/tmp/revol/slf_crop.jpg'
+
         response = signin_biometric(
-            device_id, phone, access_token, selfie_filepath)
+            device_id, userId, access_token, selfie_filepath)
+
+    token_expiry = response['tokenExpiryDate'] # unix epoch, eg 1623064046252
+    print('!! Token expiry: {}'.format(token_expiry))
 
     token = extract_token(response)
     token_str = "Your token is {}".format(token)
     device_id_str = "Your device id is {}".format(device_id)
 
     dashes = len(token_str) * "-"
+
     print("\n".join(("", dashes, token_str, device_id_str, dashes, "")))
     print("You may use it with the --token of this command or set the "
           "environment variable in your ~/.bash_profile or ~/.bash_rc, "

@@ -17,7 +17,6 @@ from revolut import Revolut, __version__
     envvar="REVOLUT_DEVICE_ID",
     type=str,
     help='your Revolut token (or set the env var REVOLUT_DEVICE_ID)',
-    default='revolut_cli',
 )
 @click.option(
     '--token', '-t',
@@ -26,16 +25,22 @@ from revolut import Revolut, __version__
     help='your Revolut token (or set the env var REVOLUT_TOKEN)',
 )
 @click.option(
+    '--channel', '-c',
+    type=click.Choice(['EMAIL', 'SMS', 'APP']),
+    help='auth channel to use',
+    default='EMAIL'
+ )
+@click.option(
     '--language', '-l',
     type=click.Choice(['en', 'fr']),
     help='language for the csv header and separator',
-    default='fr'
+    default='en'
 )
 @click.option(
     '--from_date', '-t',
     type=click.DateTime(formats=["%Y-%m-%d"]),
     help='transactions lookback date in YYYY-MM-DD format (ex: "2019-10-26"). Default 30 days back',
-    default=(datetime.now()-timedelta(days=30)).strftime("%Y-%m-%d")
+    default=(datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
 )
 @click.option(
     '--output_format', '-fmt',
@@ -48,9 +53,12 @@ from revolut import Revolut, __version__
     is_flag=True,
     help='reverse the order of the transactions displayed',
 )
-def main(device_id, token, language, from_date, output_format, reverse):
+def main(device_id, token, channel, language, from_date, output_format, reverse):
     """ Get the account balances on Revolut """
-    if token is None:
+    if device_id is None:
+        print("You don't seem to have a Revolut device_id. Use 'revolut_cli' to obtain one")
+        exit(1)
+    elif token is None:
         print("You don't seem to have a Revolut token. Use 'revolut_cli' to obtain one")
         exit(1)
 
