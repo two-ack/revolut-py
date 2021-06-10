@@ -19,6 +19,7 @@ import time
 from getpass import getpass
 import json
 import requests
+import types
 from urllib.parse import urljoin
 import os
 import uuid
@@ -610,6 +611,7 @@ class Accounts:
         for account in self.list:
             if account.name == account_name:
                 return account
+        #raise RuntimeError('no account [{}] found'.format(account_name))
 
     def __len__(self):
         return len(self.list)
@@ -757,8 +759,10 @@ def is_valid_2fa_code(code):
 
 
 def get_token_step1(device_id, phone, password, channel, simulate=False):
-    """ Function to obtain a Revolut token (step 1 : send a code by sms/email) """
-    if simulate:
+    """ Function to obtain a Revolut token if APP channel is used.
+        No payload received if channel != APP
+    """
+    if simulate:  # TODO: these are all wrong after change
         return "SMS"
 
     c = Client(renew_token=False)
@@ -767,10 +771,9 @@ def get_token_step1(device_id, phone, password, channel, simulate=False):
 
     if channel == 'APP':
         return ret.json().get("tokenId")
-    elif channel in ['EMAIL', 'SMS']:
-        return True
-    else:
+    elif channel not in ['EMAIL', 'SMS']:
         raise NotImplementedError('channel [{}] support not implemented'.format(channel))
+    # no token is received if channel = {EMAIL,SMS}
 
 
 def get_token_step2(device_id, phone, password, channel, token, simulate=False, provider_2fa=None):
@@ -797,7 +800,7 @@ def get_token_step2(device_id, phone, password, channel, token, simulate=False, 
         c = Client(renew_token=False)
 
         if channel in ['EMAIL', 'SMS']:
-            if provider_2fa:
+            if isinstance(provider_2fa, types.FunctionType):
                 code = str(provider_2fa()).replace("-", "").strip()
                 if not is_valid_2fa_code(code):
                     raise RuntimeError('incorrect 2FA code provided by the automation: [{}]'.format(code))
@@ -810,7 +813,7 @@ def get_token_step2(device_id, phone, password, channel, token, simulate=False, 
                         "[ex : 123456] : ".format(channel)
                     )
 
-                    code = code.replace("-", "").strip()  # If the user would put dashes in
+                    code = code.replace("-", "").strip()
                     if is_valid_2fa_code(code):
                         break
                     else:
@@ -879,7 +882,7 @@ def signin_biometric(device_id, userId, access_token):
             "Provide a selfie image file path (800x600) [ex : selfie.png] ")
 
     # sanity:
-    # TODO: also confirm file is img
+    # TODO: also confirm file is a valid jpg
     if not os.path.isfile(selfie_filepath):
         raise IOError('selected selfie file [{}] is not a valid file'.format(selfie_filepath))
 
