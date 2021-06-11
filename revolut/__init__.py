@@ -75,6 +75,17 @@ _SCALE_FACTOR_CURRENCY_DICT = {
                                }
 
 
+class RevolutApiException(Exception):
+    """A base class for this project exceptions."""
+
+
+class TokenExpiredException(RevolutApiException):
+    pass
+    # def __init__(self, *args, **kwargs):
+        # super().__init__(*args)
+        # self.foo = kwargs.get('foo')
+
+
 def _read_dict_from_file(file_loc) -> dict:
     try:
         with open(file_loc, 'r') as f:
@@ -98,8 +109,6 @@ def _load_config(conf_file, conf=None) -> dict:
             'clientVer': '100.0',
             'selfie': None,
             'maxTokenRefreshAttempts': 1,
-            'tokenRenewalRetries': 0,
-            'lastTokenRenewal': 0.0,
             'persistedKeys': ['pass', 'token', 'expiry', 'device'],
             '2FAProvider': None,
             'interactive': None,
@@ -108,7 +117,6 @@ def _load_config(conf_file, conf=None) -> dict:
         }
 
     conf.update(_read_dict_from_file(conf_file))
-    # self.logger.debug('effective config: {}'.format(conf))
     return conf
 
 
@@ -277,17 +285,25 @@ def token_encode(f, s) -> str:
     return token
 
 
+@retry(ConnectionError, tries=2)
+def renew_token(conf) -> str:
+    # print(' !!! starting renew_token() flow...')
+    t, e = get_token(conf)
+    conf['token'] = t
+    conf['expiry'] = e
+
+    _write_conf(conf)
+    return t
+
+
 class Client:
     """ Do the requests with the Revolut servers """
     def __init__(self, conf, token=False, renew_token=True):
         self.conf = conf
         self.session = requests.session()
         self.renew_token = renew_token
-        self.token = None
+        self.token = token
         self.auth = bool(token)
-
-        if self.auth:
-            self.token = token if type(token) == str else conf['token']
 
     def _set_hdrs(self) -> None:
         self.session.headers = {
@@ -309,8 +325,9 @@ class Client:
                     'TE': 'Trailers',
                     }
 
-        if self.auth and self.token:
-            self.session.headers.update({'x-api-authorization': 'Basic ' + self.token})
+        if self.auth:
+            token = self.conf.get('token') if self.renew_token else self.token
+            self.session.headers.update({'x-api-authorization': 'Basic ' + token})
 
     def _verif_resp_code(self, ret, codes) -> bool:
         if type(codes) == int:
@@ -325,53 +342,42 @@ class Client:
         # print('checking if expired response....{}, code key in reponse: {}'.format(ret.status_code, 'code' in j))
         return ret.status_code == 401 and 'code' in j and j['code'] == 9039
 
+    def _make_call(self, method, f, url, expected_status_code, has_files=False) -> requests.Response:
+        # print(' !!! EXEing {} make_call()'.format(method))
+        self._set_hdrs()
+        if has_files and 'Content-Type' in self.session.headers:
+            # see https://stackoverflow.com/questions/12385179/how-to-send-a-multipart-form-data-with-requests-in-python#comment90652412_12385661 as to why
+            del self.session.headers['Content-Type']
+        ret = f()
 
-    # TODO: instead of handling retry here, we'd want to use @retry decorator on get() & post() (or even on _make_call() itself)
-    # and make sure the decorator logic executes token renewal on our own-defined TokenExpiredException, which is only thrown
-    # if self.renew_token = True; think this renew method that our renewal handler decorator calls can itsef be a simple-@retyable as well.
-    # or consider using the non-decorator way if needed (RetryHandler from retry-decorator project).
-    # note then we no longer have to provide 2fa provider either, win-win!
-    # also only check to do before throwing TokenExpiredException is if(self.renew_token and self._token_expired(ret)):
-    #
-    # if renew_token() is no longer called from within Client, make sure that correct self.token is used after renewal!
-    def _make_call(self, f, url, expected_status_code, has_files=False) -> requests.Response:
-        while True:
-            self._set_hdrs()
-            if has_files and 'Content-Type' in self.session.headers:
-                # see https://stackoverflow.com/questions/12385179/how-to-send-a-multipart-form-data-with-requests-in-python#comment90652412_12385661 as to why
-                del self.session.headers['Content-Type']
-            ret = f()
-            if self._verif_resp_code(ret, expected_status_code):
-                if self.renew_token:  # do not reset on the requests that have to do with actual token renewal calls
-                    self.conf['tokenRenewalRetries'] = 0  # reset
-                    self.conf['lastTokenRenewal'] = 0.0  # reset
-                return ret
-
-            if (self.renew_token and
-                    self.conf['tokenRenewalRetries'] < self.conf['maxTokenRefreshAttempts'] and
-                    self._token_expired(ret)):
-                self.conf['tokenRenewalRetries'] += 1
-                self.conf['lastTokenRenewal'] = time.time()
-                # print('renewing token from Client!')
-                self.token = renew_token(self.conf)
-                continue  # cleared for retry
-            else:
-                break
+        if self._verif_resp_code(ret, expected_status_code):
+            return ret
+        elif (self.renew_token and self._token_expired(ret)):
+            # print('throwing TEEx...')
+            raise TokenExpiredException()
 
         raise ConnectionError(
-            'Status code {} for url {} (expected any of {})\n{}'.format(
-                ret.status_code, url, expected_status_code, ret.text))
+            'Status code {} for {} {} (expected any of {})\n{}'.format(
+                ret.status_code, method, url, expected_status_code, ret.text))
+
+    def _call_retried(self) -> requests.Response:
+        callback_by_exception = {
+            TokenExpiredException: partial(renew_token, self.conf)
+        }
+        return retry(tries=2, callback_by_exception=callback_by_exception)(self._make_call)
 
     def _get(self, url, *, expected_status_code=[200], **kwargs) -> requests.Response:
         # print('!!!! going to GET for {}...'.format(url))
-        f = partial(self.session.get, url=url, **kwargs)
-        return self._make_call(f, url, expected_status_code)
+        get_call = partial(self.session.get, url=url, **kwargs)
+        return self._call_retried()(
+            'GET', get_call, url, expected_status_code)
 
 
     def _post(self, url, *, expected_status_code=[200], **kwargs) -> requests.Response:
         # print('!!!! going to POST for {}...'.format(url))
-        f = partial(self.session.post, url=url, **kwargs)
-        return self._make_call(f, url, expected_status_code, has_files='files' in kwargs)
+        post_call = partial(self.session.post, url=url, **kwargs)
+        return self._call_retried()(
+            'POST', post_call, url, expected_status_code, has_files='files' in kwargs)
 
         ## DEBUG:
         # print('--------------------')
@@ -389,18 +395,6 @@ class Client:
         # print('reponse txt:')
         # print(ret.text)
         # print('--------------------')
-
-
-# @retry(ConnectionError, tries=CONF['maxTokenRefreshAttempts'])
-@retry(ConnectionError, tries=2)
-def renew_token(conf) -> str:
-    t, e = get_token(conf)
-    conf['token'] = t
-    conf['expiry'] = e
-
-    _write_conf(conf)
-
-    return t
 
 
 # TODO: make conf/cache scope local; allow passing in optional config dict? unsure how to handle persisting then
@@ -459,8 +453,10 @@ class Revolut:
         if token:
             conf['token'] = token
         elif not conf.get('token') or conf.get('expiry', 0) - time.time() <= 5:
-            # print('renewing token from Revolut init')
+            # print('renewing token from Revolut init()')
             renew_token(conf)  # note this guy should be retried at least twice
+
+        # self.logger.debug('effective config: {}'.format(conf))
 
         self.client = Client(conf=conf, token=True)
 
