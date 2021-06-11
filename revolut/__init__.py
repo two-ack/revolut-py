@@ -902,8 +902,11 @@ def signin_biometric(userId, access_token, conf) -> json:
     else:
         print()
         print("Selfie 3rd factor authentication was requested.")
-        selfie_filepath = input(
-            "Provide a selfie image file path (800x600) [ex : selfie.png] ")
+        while True:
+            selfie_filepath = input("Provide a selfie image file path (800x600) [ex : selfie.png] ")
+            if os.path.isfile(selfie_filepath):
+                break
+            print('provided path [{}] does not correspond to valid file'.format(selfie_filepath))
 
     # sanity:
     # TODO: also confirm file is a valid jpg

@@ -59,7 +59,11 @@ def main(device_id, token, password, phone, language, account, channel):
     rev = Revolut(device_id=device_id, token=token, password=password, phone=phone, channel=channel, interactive=True)
     account_balances = rev.get_account_balances()
     if account:
-        print(account_balances.get_account_by_name(account).balance)
+        a = account_balances.get_account_by_name(account)
+        if a:
+            print(a.balance)
+        else:
+            print('no account for [{}] found'.format(account))
     else:
         print(account_balances.csv(lang=language))
 
