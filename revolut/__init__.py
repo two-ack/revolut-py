@@ -41,6 +41,7 @@ _URL_GET_TOKEN_STEP1 = API_BASE + "/signin"
 _URL_GET_TOKEN_STEP2 = API_BASE + "/signin/confirm"
 _URL_GET_TOKEN_STEP2_APP = API_BASE + '/token'
 _URL_SELFIE = API_BASE + '/biometric-signin/selfie'
+_URL_3FA_CONFIRM_TMPLT = API_BASE + '/biometric-signin/confirm/{}'
 
 
 _AVAILABLE_CURRENCIES = ["USD", "RON", "HUF", "CZK", "GBP", "CAD", "THB",
@@ -108,12 +109,13 @@ def _load_config(conf_file, conf=None) -> dict:
             'userAgent': 'Mozilla/5.0 (X11; Linux x86_64; rv:87.0) Gecko/20100101 Firefox/87.0',
             'clientVer': '100.0',
             'selfie': None,
-            'maxTokenRefreshAttempts': 1,
-            'persistedKeys': ['pass', 'token', 'expiry', 'device'],
+            'persistedKeys': ['token', 'expiry', 'device'],
             '2FAProvider': None,
-            'interactive': None,
+            'interactive': False,
             'commonConf': None,
-            'accConf': None
+            'accConf': None,
+            'app2FASleepLoopSec': 3.5,
+            '3FASleepLoopSec': 2.1
         }
 
     conf.update(_read_dict_from_file(conf_file))
@@ -158,6 +160,7 @@ def init_root_conf_dir(d) -> str:
     return d
 
 
+# TODO: raise ConnectionError here instead?
 def validate_token_response(response):
     for i in 'user', 'accessToken', 'tokenExpiryDate':
         if i not in response:
@@ -179,24 +182,20 @@ def get_token(conf) -> (str, float):
         response = signin_biometric(userId, access_token, conf)
 
     validate_token_response(response)
-    token_expiry = response['tokenExpiryDate'] / 1000  # unix epoch, eg 1623064046.252
+    token_expiry = int(response['tokenExpiryDate']) / 1000  # unix epoch, eg 1623064046.252
     token = extract_token(response)
 
     if conf.get('interactive'):
-        token_str = "Your token is {}".format(token)
-        device_id = conf.get('device')
-        device_id_str = "Your device id is {}".format(device_id)
-        dashes = len(token_str) * "-"
-        print("\n".join(("", dashes, token_str, device_id_str, dashes, "")))
-        print("You may use it with the --token of this command or set the "
-              "environment variable in your ~/.bash_profile or ~/.bash_rc, "
-              "for example :", end="\n\n")
-        print(">>> revolut_cli.py --device-id={} --token={}".format(device_id, token))
-        print("or")
-        print('echo "export REVOLUT_DEVICE_ID={}" >> ~/.bash_profile'
-              .format(device_id))
-        print('echo "export REVOLUT_TOKEN={}" >> ~/.bash_profile'
-              .format(token))
+        token_str = '' if 'token' in conf.get('persistedKeys') else "Your token is {}".format(token)
+        device_id_str = '' if 'device' in conf.get('persistedKeys') else "Your device id is {}".format(conf.get('device'))
+        if token_str or device_id_str:
+            dashes = len(token_str) * "-"
+            print('')
+            print(dashes)
+            for i in token_str, device_id_str:
+                if i: print(i)
+            print(dashes)
+            print('')
 
     return token, token_expiry
 
@@ -400,19 +399,24 @@ class Client:
 # TODO: make conf/cache scope local; allow passing in optional config dict? unsure how to handle persisting then
 #       - create a Cache/Config class?
 class Revolut:
-    def __init__(self, device_id=None, token=None, password=None, phone=None, channel=None, persisted_keys=None, provider_2fa=None, interactive=False, root_conf_dir=None):
+    def __init__(self, device_id=None, token=None, password=None, phone=None, channel=None, persisted_keys=None, provider_2fa=None, interactive=None, root_conf_dir=None):
         root_conf_dir = init_root_conf_dir(root_conf_dir)
         common_conf_file = os.path.join(root_conf_dir, 'config')
         conf = _load_config(common_conf_file)
         conf['commonConf'] = common_conf_file
-        conf['2FAProvider'] = provider_2fa
-        conf['interactive'] = bool(interactive)
+        if provider_2fa:
+            if not isinstance(provider_2fa, types.FunctionType):
+                raise TypeError('provider_2fa needs to be a function if defined')
+            conf['2FAProvider'] = provider_2fa
+
+        if type(interactive) == bool:
+            conf['interactive'] = interactive
 
         if phone:
             conf['phone'] = str(phone)
         elif not conf.get('phone'):
-            if interactive:
-                conf['phone'] = phone = input(
+            if conf.get('interactive'):
+                conf['phone'] = input(
                     "What is your mobile phone (used with your Revolut "
                     "account) [ex : +33612345678] ? ").strip()
             else:
@@ -433,7 +437,7 @@ class Revolut:
         if password:
             conf['pass'] = str(password)
         elif not conf.get('pass'):
-            if interactive:
+            if conf.get('interactive'):
                 conf['pass'] = getpass(
                     "What is your Revolut app password [ex: 1234] ? ")
             else:
@@ -448,16 +452,17 @@ class Revolut:
 
         if isinstance(persisted_keys, (list, tuple)):
             conf['persistedKeys'] = persisted_keys
+        elif not isinstance(conf.get('persistedKeys'), (list, tuple)):
+            raise TypeError('persistedKeys conf item not of type {list, tuple}')
 
         # keep token logic for last, as renewal will possibly persist token+other data
-        if token:
+        if token and type(token) == str:
             conf['token'] = token
         elif not conf.get('token') or conf.get('expiry', 0) - time.time() <= 5:
             # print('renewing token from Revolut init()')
-            renew_token(conf)  # note this guy should be retried at least twice
+            renew_token(conf)
 
         # self.logger.debug('effective config: {}'.format(conf))
-
         self.client = Client(conf=conf, token=True)
 
 
@@ -823,24 +828,22 @@ def get_token_step2(conf, token, simulate=False) -> json:
         provider_2fa = conf.get('2FAProvider')
 
         if channel in ['EMAIL', 'SMS']:
-            if isinstance(provider_2fa, types.FunctionType):
+            if provider_2fa:
                 code = str(provider_2fa()).replace("-", "").strip()
                 if not is_valid_2fa_code(code):
-                    raise RuntimeError('incorrect 2FA code provided by the automation: [{}]'.format(code))
+                    raise ValueError('incorrect 2FA code provided by the automation: [{}]'.format(code))
             elif not conf.get('interactive'):
                 raise RuntimeError('no 2FA code nor code provider defined')
             else:
                 while True:
                     code = input(
-                        "Please enter the 6 digit code you received by {} "
+                        "Please enter the 6-digit code you received by {} "
                         "[ex : 123456] : ".format(channel)
-                    )
+                    ).replace("-", "").strip()
 
-                    code = code.replace("-", "").strip()
                     if is_valid_2fa_code(code):
                         break
-                    else:
-                        print('verification code should consist of 6 digits, but [{}] was provided'.format(code))
+                    print('verification code should consist of 6 digits, but [{}] was provided'.format(code))
 
             # TODO: unsure why, but on web first req is sent w/o password, followed by same payload w/ passwd added
             data = {"phone": conf.get('phone'), "code": code}
@@ -853,12 +856,14 @@ def get_token_step2(conf, token, simulate=False) -> json:
             res = c._post(_URL_GET_TOKEN_STEP2, json=data)
             res = res.json()
         elif channel == 'APP':
+            print('please authorize signin via phone app...')
+
             data = {"phone": conf.get('phone'), "password": conf.get('pass'), "tokenId": token}
             count = 0
             while True:
                 if count > 50:
                     raise RuntimeError('waited for [{}] iterations for successful auth from mobile app (2FA)'.format(count))
-                time.sleep(3.5)
+                time.sleep(conf.get('app2FASleepLoopSec', 3))
                 ret = c._post(_URL_GET_TOKEN_STEP2_APP, expected_status_code=[200, 422], json=data)
                 res = ret.json()
                 if ret.status_code == 200: break
@@ -887,9 +892,6 @@ def listdir_fullpath(d) -> [str]:
 
 # 3FA logic
 def signin_biometric(userId, access_token, conf) -> json:
-    # define 'files' so request's file-part headers would look like:
-    # Content-Disposition: form-data; name="selfie"; filename="selfie.jpg"
-    # Content-Type: image/jpeg
     d = conf.get('selfie')
     if d and os.path.isfile(d):
         selfie_filepath = d
@@ -912,17 +914,21 @@ def signin_biometric(userId, access_token, conf) -> json:
     c = Client(conf=conf, token=token, renew_token=False)
 
     with open(selfie_filepath, 'rb') as f:
+        # define 'files' so request's file-part headers would look like:
+        # Content-Disposition: form-data; name="selfie"; filename="selfie.jpg"
+        # Content-Type: image/jpeg
         files = {'selfie': ('selfie.jpg', f, 'image/jpeg')}
         res = c._post(_URL_SELFIE, files=files)
 
     biometric_id = res.json()["id"]
+    url = _URL_3FA_CONFIRM_TMPLT.format(biometric_id)
 
     count = 0
     while True:
         if count > 50:
             raise RuntimeError('waited for [{}] iterations for successful biometric (3FA) confirmation response'.format(count))
-        time.sleep(2.1)
-        res = c._post(API_BASE + "/biometric-signin/confirm/" + biometric_id, expected_status_code=[200, 204])
+        time.sleep(conf.get('3FASleepLoopSec', 2))
+        res = c._post(url, expected_status_code=[200, 204])
         if res.status_code == 200: break
         count += 1
 
