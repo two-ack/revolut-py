@@ -3,7 +3,7 @@
 This package allows you to communicate with your Revolut accounts
 """
 
-# one-liner for finding current in-production client-version (requires GNU grep):
+# one-liner for finding current production client-version (requires GNU grep):
 #  $ d='https://app.revolut.com' && curl -fsS "$d/start" \
 #    | grep -Eo '/static/js/main\.\w+\.chunk\.js' \
 #    | xargs -I '{}' curl -fsS "$d{}" \
@@ -16,7 +16,6 @@ import time
 from getpass import getpass
 import json
 import requests
-import types
 from urllib.parse import urljoin
 import os
 import uuid
@@ -299,8 +298,8 @@ class Revolut:
         conf = _load_config(common_conf_file)
         conf['commonConf'] = common_conf_file
         if provider_2fa:
-            if not isinstance(provider_2fa, types.FunctionType):
-                raise TypeError('provider_2fa needs to be a function if defined')
+            if not callable(provider_2fa):
+                raise TypeError('provider_2fa needs to be a callable when defined')
             conf['2FAProvider'] = provider_2fa
 
         if type(interactive) == bool:
