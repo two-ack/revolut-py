@@ -19,7 +19,6 @@ import requests
 from urllib.parse import urljoin
 import os
 import uuid
-from functools import partial
 from appdirs import user_config_dir
 from pathlib import Path
 from retry_decorator import retry
@@ -234,17 +233,17 @@ class Client:
         # print('checking if expired response....{}, code key in reponse: {}'.format(ret.status_code, 'code' in j))
         return ret.status_code == 401 and 'code' in j and j['code'] == 9039
 
-    def _make_call(self, method, f, url, expected_status_code, has_files=False) -> requests.Response:
+    def _make_call(self, method, f, url, expected_status_code, **kwargs) -> requests.Response:
         # print(' !!! EXEing {} make_call()'.format(method))
         self._set_hdrs()
-        if has_files and 'Content-Type' in self.session.headers:
+        if 'files' in kwargs and 'Content-Type' in self.session.headers:
             # see https://stackoverflow.com/questions/12385179/how-to-send-a-multipart-form-data-with-requests-in-python#comment90652412_12385661 as to why
             del self.session.headers['Content-Type']
-        ret = f()
+        ret = f(url=url, **kwargs)
 
         if self._verif_resp_code(ret, expected_status_code):
             return ret
-        elif (self.renew_token and self._token_expired(ret)):
+        elif self.renew_token and self._token_expired(ret):
             # print('throwing TEEx...')
             raise TokenExpiredException()
 
@@ -253,23 +252,21 @@ class Client:
                 ret.status_code, method, url, expected_status_code, ret.text))
 
     def _call_retried(self) -> requests.Response:
-        callback_by_exception = {
-            TokenExpiredException: partial(renew_token, self.conf)
+        cb = {
+            TokenExpiredException: lambda: renew_token(self.conf)
         }
-        return retry(tries=2, callback_by_exception=callback_by_exception)(self._make_call)
+        return retry(tries=2, callback_by_exception=cb)(self._make_call)
 
     def _get(self, url, *, expected_status_code=[200], **kwargs) -> requests.Response:
         # print('!!!! going to GET for {}...'.format(url))
-        get_call = partial(self.session.get, url=url, **kwargs)
         return self._call_retried()(
-            'GET', get_call, url, expected_status_code)
+            'GET', self.session.get, url, expected_status_code, **kwargs)
 
 
     def _post(self, url, *, expected_status_code=[200], **kwargs) -> requests.Response:
         # print('!!!! going to POST for {}...'.format(url))
-        post_call = partial(self.session.post, url=url, **kwargs)
         return self._call_retried()(
-            'POST', post_call, url, expected_status_code, has_files='files' in kwargs)
+            'POST', self.session.post, url, expected_status_code, **kwargs)
 
         ## DEBUG:
         # print('--------------------')
