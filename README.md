@@ -30,8 +30,7 @@ Usage: revolut_cli.py [OPTIONS]
   Get the account balances on Revolut
 
 Options:
-  -d, --device-id TEXT  your Revolut token (or set the env var
-                        REVOLUT_DEVICE_ID)
+  -d, --device-id TEXT  your device ID (or set the env var REVOLUT_DEVICE_ID)
 
   -t, --token TEXT      your Revolut token (or set the env var REVOLUT_TOKEN)
   -l, --language TEXT   language ("fr" or "en"), for the csv header and
@@ -69,8 +68,7 @@ Usage: revolut_transactions.py [OPTIONS]
   Get the account balances on Revolut
 
 Options:
-  -d, --device-id TEXT            your Revolut token (or set the env var
-                                  REVOLUT_DEVICE_ID)
+  -d, --device-id TEXT  your device ID (or set the env var REVOLUT_DEVICE_ID)
 
   -t, --token TEXT                your Revolut token (or set the env var
                                   REVOLUT_TOKEN)

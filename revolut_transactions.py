@@ -54,6 +54,11 @@ from revolut import Revolut, __version__
     default=(datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
 )
 @click.option(
+    '--to-date', '-T',
+    type=click.DateTime(formats=["%Y-%m-%d"]),
+    help='transactions lookforward date in YYYY-MM-DD format (ex: "2019-10-30")'
+)
+@click.option(
     '--output-format', '-f',
     type=click.Choice(['csv', 'json']),
     help="output format",
@@ -64,17 +69,22 @@ from revolut import Revolut, __version__
     is_flag=True,
     help='reverse the order of the transactions displayed',
 )
-def main(device_id, token, password, phone, channel, language, from_date, output_format, reverse):
+def main(device_id, token, password, phone, channel, language, from_date, to_date, output_format, reverse=False):
     """ Get the account balances on Revolut """
     rev = Revolut(device_id=device_id, token=token, password=password, phone=phone, channel=channel, interactive=True)
-    account_transactions = rev.get_account_transactions(from_date)
+    account_transactions = rev.get_account_transactions(from_date, to_date)
     if output_format == 'csv':
         print(account_transactions.csv(lang=language, reverse=reverse))
     elif output_format == 'json':
         transactions = account_transactions.raw_list
         if reverse:
             transactions = reversed(transactions)
-        print(json.dumps(transactions))
+        d = json.dumps(
+                transactions,
+                indent=4,
+                separators=(',', ': '),
+                ensure_ascii=False)
+        print(d)
     else:
         print("output format {!r} not implemented".format(output_format))
         exit(1)

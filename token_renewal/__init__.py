@@ -33,6 +33,18 @@ def validate_token_response(response):
 
 def get_token(conf) -> (str, float):
 
+    def _print_info():
+        token_str = '' if 'token' in conf.get('persistedKeys') else "Your token is {}".format(token)
+        device_id_str = '' if 'device' in conf.get('persistedKeys') else "Your device id is {}".format(conf.get('device'))
+        if token_str or device_id_str:
+            dashes = max(len(token_str), len(device_id_str)) * "-"
+            print('')
+            print(dashes)
+            for i in token_str, device_id_str:
+                if i: print(i)
+            print(dashes)
+            print('')
+
     tokenId = get_token_step1(conf)
     # print('!!!! got tokenid {}'.format(tokenId))
 
@@ -48,16 +60,7 @@ def get_token(conf) -> (str, float):
     token = extract_token(response)
 
     if conf.get('interactive'):
-        token_str = '' if 'token' in conf.get('persistedKeys') else "Your token is {}".format(token)
-        device_id_str = '' if 'device' in conf.get('persistedKeys') else "Your device id is {}".format(conf.get('device'))
-        if token_str or device_id_str:
-            dashes = len(token_str) * "-"
-            print('')
-            print(dashes)
-            for i in token_str, device_id_str:
-                if i: print(i)
-            print(dashes)
-            print('')
+        _print_info()
 
     return token, token_expiry
 

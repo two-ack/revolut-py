@@ -11,3 +11,9 @@ class RevolutApiException(Exception):
 class TokenExpiredException(RevolutApiException):
     """To be thrown when Revolut API responds with token expired message"""
 
+
+class ApiChangedException(RevolutApiException):
+    """To be thrown when Revolut API has (possibly) changed, rendering our
+       current implementation obsolete and requiring attention.
+    """
+

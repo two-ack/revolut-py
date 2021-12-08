@@ -22,7 +22,7 @@ import uuid
 from appdirs import user_config_dir
 from pathlib import Path
 from retry_decorator import retry
-from exceptions import TokenExpiredException
+from exceptions import TokenExpiredException, ApiChangedException
 
 __version__ = '0.1.4'  # Should be the same in setup.py
 
@@ -34,6 +34,7 @@ _URL_QUOTE = API_BASE + "/quote/"
 _URL_EXCHANGE = API_BASE + "/exchange"
 
 
+# TODO: rename to _SUPPORTED_CURRENCIES
 _AVAILABLE_CURRENCIES = ["USD", "RON", "HUF", "CZK", "GBP", "CAD", "THB",
                          "SGD", "CHF", "AUD", "ILS", "DKK", "PLN", "MAD",
                          "AED", "EUR", "JPY", "ZAR", "NZD", "HKD", "TRY",
@@ -50,6 +51,7 @@ _TRANSACTION_PENDING = "PENDING"
 _TRANSACTION_REVERTED = "REVERTED"
 _TRANSACTION_DECLINED = "DECLINED"
 
+_SUPPORTED_CHANNELS = ['EMAIL', 'SMS', 'APP']
 _DEFAULT_CHANNEL = 'EMAIL'
 
 # The amounts are stored as integer on Revolut.
@@ -119,6 +121,9 @@ class Amount:
             raise KeyError(currency)
         self.currency = currency
 
+        self.scale = _SCALE_FACTOR_CURRENCY_DICT.get(
+                self.currency, _DEFAULT_SCALE_FACTOR)
+
         if revolut_amount is not None:
             if type(revolut_amount) != int:
                 raise TypeError(type(revolut_amount))
@@ -135,9 +140,9 @@ class Amount:
 
         self.real_amount_str = self.get_real_amount_str()
 
-    def get_real_amount_str(self):
+    def get_real_amount_str(self) -> str:
         """ Get the real amount with the proper format, without currency """
-        digits_after_float = int(math.log10(_SCALE_FACTOR_CURRENCY_DICT.get(self.currency, _DEFAULT_SCALE_FACTOR)))
+        digits_after_float = int(math.log10(self.scale))
         return("%.*f" % (digits_after_float, self.real_amount))
 
     def __str__(self):
@@ -147,35 +152,32 @@ class Amount:
         return("Amount(real_amount={}, currency='{}')".format(
             self.real_amount, self.currency))
 
-    def get_real_amount(self):
-        """ Get the real amount from a Revolut amount
+    def get_real_amount(self) -> float:
+        """ Resolve the real amount from a Revolut amount
         >>> a = Amount(revolut_amount=100, currency="EUR")
         >>> a.get_real_amount()
         1.0
         """
-        scale = _SCALE_FACTOR_CURRENCY_DICT.get(
-                self.currency, _DEFAULT_SCALE_FACTOR)
-        return float(self.revolut_amount/scale)
+        return float(self.revolut_amount / self.scale)
 
-    def get_revolut_amount(self):
+    def get_revolut_amount(self) -> int:
         """ Get the Revolut amount from a real amount
         >>> a = Amount(real_amount=1, currency="EUR")
         >>> a.get_revolut_amount()
         100
         """
-        scale = _SCALE_FACTOR_CURRENCY_DICT.get(
-                self.currency, _DEFAULT_SCALE_FACTOR)
-        return int(self.real_amount*scale)
+        return int(self.real_amount * self.scale)
 
 
+# TODO: rename to ExchangeTransaction? we already have an AccountTransaction
 class Transaction:
     """ Class to handle an exchange transaction """
     def __init__(self, from_amount, to_amount, date):
         if type(from_amount) != Amount:
             raise TypeError
-        if type(to_amount) != Amount:
+        elif type(to_amount) != Amount:
             raise TypeError
-        if type(date) != datetime:
+        elif type(date) != datetime:
             raise TypeError
         self.from_amount = from_amount
         self.to_amount = to_amount
@@ -205,7 +207,6 @@ class Client:
                     'X-Device-Id': self.conf['device'],
                     'x-browser-application': 'WEB_CLIENT',
                     'User-Agent': self.conf['userAgent'],
-                    #"x-client-geo-location": "36.51490,-4.88380",
                     "Content-Type": "application/json;charset=utf-8",
                     "Accept": "application/json, text/plain, */*",
                     "Accept-Encoding": "gzip, deflate, br",
@@ -219,6 +220,8 @@ class Client:
         if self.auth:
             token = self.conf.get('token') if self.renew_token else self.token
             self.session.headers.update({'x-api-authorization': 'Basic ' + token})
+        if 'geo' in self.conf:
+            self.session.headers.update({'x-client-geo-location': self.conf.get('geo')})
 
     def _verif_resp_code(self, ret, codes) -> bool:
         if type(codes) == int:
@@ -247,25 +250,29 @@ class Client:
             # print('throwing TEEx...')
             raise TokenExpiredException()
 
-        raise ConnectionError(
-            'Status code {} for {} {} (expected any of {})\n{}'.format(
-                ret.status_code, method, url, expected_status_code, ret.text))
+        if type(expected_status_code) == int or len(expected_status_code) == 1:
+            msg = expected_status_code
+        else:
+            msg = 'any of {}'.format(expected_status_code)
 
-    def _call_retried(self) -> requests.Response:
+        raise ConnectionError(
+            'Status code {} for {} {} (expected {})\n{}'.format(
+                ret.status_code, method, url, msg, ret.text))
+
+    def _make_call_retried(self) -> requests.Response:
         cb = {
             TokenExpiredException: lambda: renew_token(self.conf)
         }
         return retry(tries=2, callback_by_exception=cb)(self._make_call)
 
-    def _get(self, url, *, expected_status_code=[200], **kwargs) -> requests.Response:
+    def _get(self, url, *, expected_status_code=200, **kwargs) -> requests.Response:
         # print('!!!! going to GET for {}...'.format(url))
-        return self._call_retried()(
+        return self._make_call_retried()(
             'GET', self.session.get, url, expected_status_code, **kwargs)
 
-
-    def _post(self, url, *, expected_status_code=[200], **kwargs) -> requests.Response:
+    def _post(self, url, *, expected_status_code=200, **kwargs) -> requests.Response:
         # print('!!!! going to POST for {}...'.format(url))
-        return self._call_retried()(
+        return self._make_call_retried()(
             'POST', self.session.post, url, expected_status_code, **kwargs)
 
         ## DEBUG:
@@ -340,6 +347,9 @@ class Revolut:
         elif not conf.get('channel'):
             conf['channel'] = _DEFAULT_CHANNEL
 
+        if conf['channel'] not in _SUPPORTED_CHANNELS:
+            raise RuntimeError('provided/configured channel [{}] not supported'.format(conf['channel']))
+
         if isinstance(persisted_keys, (list, tuple)):
             conf['persistedKeys'] = persisted_keys
         elif not isinstance(conf.get('persistedKeys'), (list, tuple)):
@@ -362,6 +372,9 @@ class Revolut:
         ret = self.client._get(_URL_GET_ACCOUNTS)
         raw_accounts = ret.json()
 
+        if 'pockets' not in raw_accounts:
+            raise ApiChangedException('[pockets] key not in wallet response')
+
         account_balances = []
         for raw_account in raw_accounts.get("pockets"):
             account_balances.append({
@@ -375,26 +388,81 @@ class Revolut:
         self.account_balances = Accounts(account_balances)
         return self.account_balances
 
-    def get_account_transactions(self, from_date=None, to_date=None):
-        """Get the account transactions."""
-        raw_transactions = []
-        params = {}
-        if to_date:
-            params['to'] = int(to_date.timestamp()) * 1000
-        if from_date:
-            params['from'] = int(from_date.timestamp()) * 1000
+    def get_account_transactions(self, from_date=None, to_date=None, from_legid=None, to_legid=None):
+        """Get the account transactions for given timeframe."""
 
-        while True:
+        def validate_and_set_date_param(arg, val):
+            if val is None:
+                return
+            elif isinstance(val, datetime):
+                params[arg] = int(val.timestamp() * 1000)
+            elif isinstance(val, int):
+                params[arg] = val
+            else:
+                raise TypeError('[{}] param cannot be of type {}'.format(arg, type(val)))
+
+            expected_timestamp_len = 13
+            if len(str(params[arg])) != expected_timestamp_len:
+                raise ValueError('[{}] param should be millis with length of {}'.format(arg, expected_timestamp_len))
+
+        params = {}
+        # params.update({'count': 20})  # for debugging
+        validate_and_set_date_param('to', to_date)
+        validate_and_set_date_param('from', from_date)
+        if from_legid and to_legid and from_legid == to_legid:
+            raise ValueError('[from_legid] & [to_legid] cannot have same values')
+        elif from_date and to_date and params['from'] > params['to']:
+            raise ValueError('[from_date] cannot come after [to_date]')
+
+        raw_transactions = []
+        previous_timestamp = None  # track timestamps against pagination infinite-loop protection
+        process = to_legid is None
+        from_legid_found = to_legid_found = False
+        ask_more = True
+        while ask_more:
+            # f = t = None
+            # if from_date:
+                # f = datetime.fromtimestamp(from_date.timestamp())
+            # if 'to' in params:
+                # t = datetime.fromtimestamp(params['to']/1000)
+            # print('fetching tx data from [{}] to [{}]'.format(
+                # f"{f:%Y-%m-%d %H:%M:%S}" if f else None,
+                # f"{t:%Y-%m-%d %H:%M:%S}" if t else None))
             ret = self.client._get(_URL_GET_TRANSACTIONS_LAST, params=params)
             ret_transactions = ret.json()
             if not ret_transactions:
+                # print('empty response, break...')  # debug
                 break
-            params['to'] = ret_transactions[-1]['startedDate']
-            raw_transactions.extend(ret_transactions)
+            params['to'] = ret_transactions[-1]['startedDate']  # 'to' arg needs to be modified for the pagination
+            # i = datetime.fromtimestamp(ret_transactions[0]['startedDate']/1000)
+            # j = datetime.fromtimestamp(ret_transactions[-1]['startedDate']/1000)
+            # print('response; len [{}]; dates [0]{}  -  [-1]{}'.format(len(ret_transactions), f"{i:%Y-%m-%d %H:%M:%S}", f"{j:%Y-%m-%d %H:%M:%S}"))
 
-        # TODO: make sure dupes are filtered out from raw_transactions!
-        # really unsure why this 'to' is added - wouldn't we be basically
-        # repeating the request?
+            # attempt to safeguard against possible infitite loops:
+            if previous_timestamp == params['to']:
+                raise ApiChangedException('possible infinite loop detected in transaction query logic')
+            previous_timestamp = params['to']
+
+            for tx in ret_transactions:
+                if to_legid is not None and not to_legid_found and tx['legId'] == to_legid:
+                    process = to_legid_found = True
+                    continue
+                elif from_legid is not None and not from_legid_found and tx['legId'] == from_legid:
+                    if to_legid is not None and not to_legid_found:
+                        raise RuntimeError('[from_legid] encountered before [to_legid]; either API has changed or incorrect param(s) provided')
+                    from_legid_found = True
+                    ask_more = False
+                    break
+                elif process:
+                    raw_transactions.append(tx)
+
+        if (from_legid and not from_legid_found) or (to_legid and not to_legid_found):
+            raise RuntimeError('[from_legid] and/or [to_legid] provided, but couldnt be located from Revolut API responses')
+
+        # sanity; detect dupes:
+        leg_ids = set([tx['legId'] for tx in raw_transactions])
+        if len(leg_ids) != len(raw_transactions):
+            raise ApiChangedException('received duplicate transactions w/ same [legId] attribute. verify if Revolut API has changed')
 
         return AccountTransactions(raw_transactions)
 
@@ -406,9 +474,8 @@ class Revolut:
 
     def quote(self, from_amount, to_currency):
         if type(from_amount) != Amount:
-            raise TypeError("from_amount must be with the Amount type")
-
-        if to_currency not in _AVAILABLE_CURRENCIES:
+            raise TypeError("from_amount must be of the Amount type")
+        elif to_currency not in _AVAILABLE_CURRENCIES:
             raise KeyError(to_currency)
 
         url_quote = urljoin(_URL_QUOTE, '{}{}?amount={}&side=SELL'.format(
@@ -423,9 +490,8 @@ class Revolut:
 
     def exchange(self, from_amount, to_currency, simulate=False):
         if type(from_amount) != Amount:
-            raise TypeError("from_amount must be with the Amount type")
-
-        if to_currency not in _AVAILABLE_CURRENCIES:
+            raise TypeError("from_amount must be of the Amount type")
+        elif to_currency not in _AVAILABLE_CURRENCIES:
             raise KeyError(to_currency)
 
         data = {
@@ -463,6 +529,7 @@ class Revolut:
             ret = self.client._post(_URL_EXCHANGE, json=data)
             raw_exchange = ret.json()
 
+        # TODO: shouldn't we also validate raw_exchange length?
         if raw_exchange[0]["state"] == "COMPLETED":
             amount = raw_exchange[0]["counterpart"]["amount"]
             currency = raw_exchange[0]["counterpart"]["currency"]
@@ -478,7 +545,9 @@ class Revolut:
 
 
 class Account:
-    """ Class to handle an account """
+    """ Class to handle an account.
+        Also known as a 'Wallet' on Revolut side.
+    """
     def __init__(self, account_type, balance, state, vault_name):
         self.account_type = account_type  # CURRENT, SAVINGS
         self.balance = balance
@@ -504,7 +573,9 @@ class Account:
 
 
 class Accounts:
-    """ Class to handle the account balances """
+    """ Class to handle the account balances.
+        Note Account is also known as Wallet in Revolut parlance.
+    """
 
     def __init__(self, account_balances):
         self.raw_list = account_balances
@@ -518,7 +589,7 @@ class Accounts:
                 state=account.get("state"),
                 vault_name=account.get("vault_name"),
             )
-            for account in self.raw_list
+            for account in account_balances
         ]
 
     def get_account_by_name(self, account_name):
@@ -526,7 +597,6 @@ class Accounts:
         for account in self.list:
             if account.name == account_name:
                 return account
-        #raise RuntimeError('no account [{}] found'.format(account_name))
 
     def __len__(self):
         return len(self.list)
@@ -614,7 +684,7 @@ class AccountTransactions:
     """ Class to handle the account transactions """
 
     def __init__(self, account_transactions):
-        self.raw_list = account_transactions
+        self.raw_list = account_transactions  # as received from Revolut api
         self.list = [
             AccountTransaction(
                 transactions_type=transaction.get("type"),
@@ -633,7 +703,7 @@ class AccountTransactions:
     def __len__(self):
         return len(self.list)
 
-    def csv(self, lang="fr", reverse=False):
+    def csv(self, lang="en", reverse=False):
         lang_is_fr = lang == "fr"
         if lang_is_fr:
             csv_str = "Date-heure (DD/MM/YYYY HH:MM:ss);Description;Montant;Devise"
