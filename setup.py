@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from pathlib import Path
 from setuptools import setup
+from revolut import __version__
 
 HERE = Path(__file__).parent
 reqs_path = HERE / 'requirements.txt'
@@ -9,13 +10,13 @@ with open(reqs_path) as reqs_file:
 
 # Based on http://peterdowns.com/posts/first-time-with-pypi.html
 
-__version__ = '0.1.4'  # Should match with __init.py__
 _NAME = 'revolut'
-_PACKAGE_LIST = ['revolut', 'revolut_bot']
+_PACKAGE_LIST = ['revolut', 'revolut_bot', 'token_renewal']  # alternatively setuptools.find_packages()
 _URL_GITHUB = 'https://github.com/tducret/revolut-python'
 _DESCRIPTION = 'Package to get account balances and do operations on Revolut'
 _MOTS_CLES = ['api', 'revolut', 'bank', 'parsing', 'cli',
-              'python-wrapper', 'scraping', 'scraper', 'parser']
+              'python-wrapper', 'scraping', 'scraper', 'parser',
+              'lib', 'library']
 _SCRIPTS = ['revolut_cli.py', 'revolutbot.py', 'revolut_transactions.py']
 # To delete here + 'scripts' dans setup()
 # if no command is used in the package
@@ -37,8 +38,15 @@ setup(
     keywords=_MOTS_CLES,
     setup_requires=requirements,
     install_requires=requirements,
-    classifiers=['Programming Language :: Python :: 3'],
-    python_requires='>=3',
+    classifiers=[
+        'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3 :: Only',
+        'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3.9',
+        'Programming Language :: Python :: 3.10',
+    ],
+    python_requires='>=3.7',
     tests_require=['pytest'],
 )
 

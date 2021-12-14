@@ -7,7 +7,7 @@ This package allows you to communicate with your Revolut accounts
 #  $ d='https://app.revolut.com' && curl -fsS "$d/start" \
 #    | grep -Eo '/static/js/main\.\w+\.chunk\.js' \
 #    | xargs -I '{}' curl -fsS "$d{}" \
-#    | grep -Po '\.ClientVersion,"\K\d+\.\d+(?=")'
+#    | grep -Po '\.ClientVersion,"\K\d+(\.\d+)?'
 
 
 import math
@@ -24,7 +24,7 @@ from pathlib import Path
 from retry_decorator import retry
 from exceptions import TokenExpiredException, ApiChangedException
 
-__version__ = '0.1.4'  # Should be the same in setup.py
+__version__ = '0.1.4'
 
 API_ROOT = "https://app.revolut.com"
 API_BASE = API_ROOT + "/api/retail"
@@ -539,6 +539,7 @@ class Revolut:
                                                to_amount=exchanged_amount,
                                                date=datetime.now())
         else:
+            # TODO: is ConnectionError correct errtype here?
             raise ConnectionError("Transaction error : %s" % ret.text)
 
         return exchange_transaction

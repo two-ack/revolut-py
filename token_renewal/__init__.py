@@ -12,6 +12,7 @@ import time
 from typing import Optional
 from revolut import Client, API_BASE
 from retry_decorator import retry
+from exceptions import ApiChangedException
 
 
 _URL_GET_TOKEN_STEP1 = API_BASE + "/signin"
@@ -22,13 +23,12 @@ _URL_3FA_CONFIRM_TMPLT = API_BASE + '/biometric-signin/confirm/{}'
 _3FAT = "thirdFactorAuthAccessToken"
 
 
-# TODO: raise ConnectionError here instead?
 def validate_token_response(response):
     for i in 'user', 'accessToken', 'tokenExpiryDate':
         if i not in response:
-            raise RuntimeError('required key [{}] not in response payload'.format(i))
+            raise ApiChangedException('required key [{}] not in response payload'.format(i))
     if 'id' not in response['user']:
-        raise RuntimeError('required key [user.id] not in response payload')
+        raise ApiChangedException('required key [user.id] not in response payload')
 
 
 def get_token(conf) -> (str, float):
@@ -162,6 +162,7 @@ def get_token_step2(conf, token, simulate=False) -> json:
             count = 0
             while True:
                 if count > 50:
+                    # TODO: raise ConnectionError instead? although note that would qualify it for retry
                     raise RuntimeError('waited for [{}] iterations for successful auth from mobile app (2FA)'.format(count))
                 time.sleep(conf.get('app2FASleepLoopSec', 3))
                 ret = c._post(_URL_GET_TOKEN_STEP2_APP, expected_status_code=[200, 422], json=data)
@@ -169,9 +170,10 @@ def get_token_step2(conf, token, simulate=False) -> json:
                 if ret.status_code == 200: break
 #             "text": "{\"message\":\"One should obtain consent from the user before continuing\",\"code\":9035}" response while waiting for app-based accepting
                 if 'code' not in res or res['code'] != 9035:
+                    code = res['code'] if 'code' in res else 'CODE_NOT_SENT'
                     raise ConnectionError(
                         'sent error code for [{}] was unexpected: {}'.format(
-                            _URL_GET_TOKEN_STEP2_APP, res['code']))
+                            _URL_GET_TOKEN_STEP2_APP, code))
                 count += 1
 
         raw_get_token = res
