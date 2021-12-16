@@ -99,7 +99,7 @@ def get_token_step1(conf, simulate=False) -> Optional[str]:
         return ret.json().get("tokenId")
     elif channel not in ['EMAIL', 'SMS']:
         raise NotImplementedError('channel [{}] support not implemented'.format(channel))
-    # no token is received if channel = {EMAIL,SMS}
+    # note no token is received if channel = {EMAIL,SMS}
 
 
 def get_token_step2(conf, token, simulate=False) -> json:
@@ -125,16 +125,14 @@ def get_token_step2(conf, token, simulate=False) -> json:
 
         c = Client(conf=conf, renew_token=False)
         channel = conf.get('channel')
-        provider_2fa = conf.get('2FAProvider')
 
         if channel in ['EMAIL', 'SMS']:
+            provider_2fa = conf.get('2FAProvider')
             if provider_2fa:
                 code = str(provider_2fa(phone=conf.get('phone'))).replace("-", "").strip()
                 if not is_valid_2fa_code(code):
                     raise ValueError('incorrect 2FA code provided by the automation: [{}]'.format(code))
-            elif not conf.get('interactive'):
-                raise RuntimeError('no 2FA code nor code provider defined')
-            else:
+            else:  # Revolut().init validates we got to be in interactive mode
                 while True:
                     code = input(
                         "Please enter the 6-digit code you received by {} "
@@ -156,7 +154,8 @@ def get_token_step2(conf, token, simulate=False) -> json:
             res = c._post(_URL_GET_TOKEN_STEP2, json=data)
             res = res.json()
         elif channel == 'APP':
-            print('please authorize signin via phone app...')
+            if conf.get('interactive'):
+                print('please authorize signin via phone app...')
 
             data = {"phone": conf.get('phone'), "password": conf.get('pass'), "tokenId": token}
             count = 0
@@ -179,7 +178,6 @@ def get_token_step2(conf, token, simulate=False) -> json:
         raw_get_token = res
 
     return raw_get_token
-
 
 
 def extract_token(json_response) -> str:
@@ -222,7 +220,7 @@ def signin_biometric(userId, access_token, conf) -> json:
         # define 'files' so request file-part headers would look like:
         # Content-Disposition: form-data; name="selfie"; filename="selfie.jpg"
         # Content-Type: image/jpeg
-        files = {'selfie': ('selfie.jpg', f, 'image/jpeg')}
+        files = {'selfie': ('selfie.jpg', f, 'image/jpeg')}  # TODO: we're currently hardcoding mimetype to jpeg regardless of actual mime; same for filename. maybe enforce jpg input?
         res = c._post(_URL_SELFIE, files=files)
 
     biometric_id = res.json()["id"]

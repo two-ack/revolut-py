@@ -24,7 +24,7 @@ from pathlib import Path
 from retry_decorator import retry
 from exceptions import TokenExpiredException, ApiChangedException
 
-__version__ = '0.1.4'  # referneced by setup.cfg
+__version__ = '0.1.4'
 
 API_ROOT = "https://app.revolut.com"
 API_BASE = API_ROOT + "/api/retail"
@@ -71,7 +71,7 @@ def _read_dict_from_file(file_loc) -> dict:
     try:
         with open(file_loc, 'r') as f:
             return json.load(f)
-    except Exception:
+    except FileNotFoundError:
         return {}
 
 
@@ -304,10 +304,6 @@ class Revolut:
         common_conf_file = os.path.join(root_conf_dir, 'config')
         conf = _load_config(common_conf_file)
         conf['commonConf'] = common_conf_file
-        if provider_2fa:
-            if not callable(provider_2fa):
-                raise TypeError('provider_2fa needs to be a callable when defined')
-            conf['2FAProvider'] = provider_2fa
 
         if type(interactive) == bool:
             conf['interactive'] = interactive
@@ -355,6 +351,13 @@ class Revolut:
 
         if conf['channel'] not in _SUPPORTED_CHANNELS:
             raise RuntimeError('provided/configured channel [{}] not supported'.format(conf['channel']))
+
+        if provider_2fa:
+            if not callable(provider_2fa):
+                raise TypeError('provider_2fa needs to be a callable when defined')
+            conf['2FAProvider'] = provider_2fa
+        elif channel in ['EMAIL', 'SMS'] and not conf.get('interactive'):
+            raise RuntimeError('provider_2fa needs to be defined in non-interactive mode')
 
         if isinstance(persisted_keys, (list, tuple)):
             conf['persistedKeys'] = persisted_keys

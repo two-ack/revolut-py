@@ -25,8 +25,8 @@ python3 -m pip install --user --upgrade revolut-py
 
 # Configuration
 
-revolut-py config dir is located under `$XDG_CONFIG_HOME/revolut-py`
-(eg `~/.config/revolut-py`) by default, but can be customized via constructor: `Revolut(root_conf_dir=mydir)`
+revolut-py config dir defaults to `$XDG_CONFIG_HOME/revolut-py`
+(eg `~/.config/revolut-py`), but can be customized via constructor: `Revolut(root_conf_dir=mydir)`
 
 Config dir will have one or more json-based config files:
 - `config` - stores the main/common configuration;
@@ -81,7 +81,7 @@ from config file(s) or generated automatically. Couple of options deserve furthe
 
 | Key | Description | Default | Example |
 | --- | --- | --- | --- |
-| provider_2fa  | Callable accepting phone number as argument and returning 2FA code sent by Revolut | None | lambda phone: my_func_providing_2fa_code() |
+| provider_2fa  | Callable accepting phone number as argument and returning 2FA code sent by Revolut. Needed in non-interactive mode if channel in [EMAIL,SMS] | None | lambda phone: my_func_providing_2fa_code() |
 | interactive   | Whether we're running in interactive mode. In interactive mode missing config items are asked from user | False | True |
 | root_conf_dir | See description above under 'Configuration' | $XDG_CONFIG_HOME/revolut-py | /path/to/own/dir/ |
 
@@ -157,8 +157,15 @@ Date-time,Description,Amount,Currency
 This project is forked from https://github.com/tducret/revolut-python
 
 
+## See also
+
+- [tducret/revolut-python](https://github.com/tducret/revolut-python) - this project's upstream
+- [useme-com/revolut-python](https://github.com/useme-com/revolut-python) - believe this needs Revolut Business account
+
+
 ## TODO
 
-- [ ] Document revolutbot.py
-- [ ] Create a RaspberryPi Dockerfile for revolutbot (to check if rates grows very often)
-- [ ] Improve coverage for revolutbot
+- [ ] ~Document~ Remove revolutbot.py - seems like something that's out of scope of a general api library
+- [ ] ~Create a RaspberryPi Dockerfile for revolutbot (to check if rates grows very often)~
+- [ ] ~Improve coverage for revolutbot~
+- [ ] Fix + improve tests

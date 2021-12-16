@@ -19,6 +19,7 @@ steps:
     token:
       from_secret: coveralls_token
     files:
+    # TODO: find out which file(s) are generated & need sending to coveralls:
     - ./lcov.info
 
 - name: pypi-publish
