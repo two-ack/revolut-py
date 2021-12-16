@@ -24,7 +24,7 @@ from pathlib import Path
 from retry_decorator import retry
 from exceptions import TokenExpiredException, ApiChangedException
 
-__version__ = '0.1.4'
+__version__ = '0.1.4'  # referneced by setup.cfg
 
 API_ROOT = "https://app.revolut.com"
 API_BASE = API_ROOT + "/api/retail"
@@ -89,7 +89,7 @@ def _load_config(conf_file, conf=None) -> dict:
             'userAgent': 'Mozilla/5.0 (X11; Linux x86_64; rv:87.0) Gecko/20100101 Firefox/87.0',
             'clientVer': '100.0',
             'selfie': None,
-            'persistedKeys': ['token', 'expiry', 'device'],
+            'persistedKeys': ['token', 'expiry', 'device'],  # conf items stored under per-account conf file (file-name defined under 'accConf' key)
             '2FAProvider': None,
             'interactive': False,
             'commonConf': None,
@@ -191,7 +191,7 @@ class Transaction:
 
 class Client:
     """ Do the requests with the Revolut servers """
-    def __init__(self, conf, token=False, renew_token=True):
+    def __init__(self, conf, token=None, renew_token=True):
         self.conf = conf
         self.session = requests.session()
         self.renew_token = renew_token
@@ -220,7 +220,7 @@ class Client:
         if self.auth:
             token = self.conf.get('token') if self.renew_token else self.token
             self.session.headers.update({'x-api-authorization': 'Basic ' + token})
-        if 'geo' in self.conf:
+        if self.conf.get('geo'):
             self.session.headers.update({'x-client-geo-location': self.conf.get('geo')})
 
     def _verif_resp_code(self, ret, codes) -> bool:
@@ -296,7 +296,10 @@ class Client:
 # TODO: make conf/cache scope local; allow passing in optional config dict? unsure how to handle persisting then
 #       - create a Cache/Config class?
 class Revolut:
-    def __init__(self, device_id=None, token=None, password=None, phone=None, channel=None, persisted_keys=None, provider_2fa=None, interactive=None, root_conf_dir=None):
+    def __init__(self, device_id=None, token=None,
+                 password=None, phone=None, channel=None,
+                 persisted_keys=None, provider_2fa=None,
+                 interactive=None, root_conf_dir=None):
         root_conf_dir = init_root_conf_dir(root_conf_dir)
         common_conf_file = os.path.join(root_conf_dir, 'config')
         conf = _load_config(common_conf_file)
@@ -330,6 +333,9 @@ class Revolut:
             conf['device'] = device_id
         elif not conf.get('device'):
             conf['device'] = str(uuid.uuid4())  # verify format from real web client
+
+        if callable(password):
+            password = password(phone=conf['phone'])
 
         if password:
             conf['pass'] = str(password)
