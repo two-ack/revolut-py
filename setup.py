@@ -1,25 +1,40 @@
 # -*- coding: utf-8 -*-
-from pathlib import Path
-from setuptools import setup
-from revolut import __version__
-
-HERE = Path(__file__).parent
-reqs_path = HERE / 'requirements.txt'
-with open(reqs_path) as reqs_file:
-    requirements = reqs_file.read().splitlines()
-
 # Based on http://peterdowns.com/posts/first-time-with-pypi.html
 
-_NAME = 'revolut'
-_PACKAGE_LIST = ['revolut', 'revolut_bot', 'token_renewal']  # alternatively setuptools.find_packages()
-_URL_GITHUB = 'https://github.com/tducret/revolut-python'
-_DESCRIPTION = 'Package to get account balances and do operations on Revolut'
+from setuptools import setup
+import codecs
+import os.path
+
+
+def read(rel_path):
+    here = os.path.abspath(os.path.dirname(__file__))
+    with codecs.open(os.path.join(here, rel_path), 'r') as fp:
+        return fp.read()
+
+
+def get_version(rel_path):
+    for line in read(rel_path).splitlines():
+        if line.startswith('__version__'):
+            delim = '"' if '"' in line else "'"
+            return line.split(delim)[1]
+    else:
+        raise RuntimeError('Unable to find version string.')
+
+
+_NAME = 'revolut-py'
+_PACKAGE_LIST = ['revolut', 'revolut_bot', 'token_renewal']  # alternatively setuptools.find_packages(".", exclude=["test"])
+_URL_GITHUB = 'https://github.com/laur89/revolut-py'
+_DESCRIPTION = 'Unofficial Revolut api client for python'
 _MOTS_CLES = ['api', 'revolut', 'bank', 'parsing', 'cli',
               'python-wrapper', 'scraping', 'scraper', 'parser',
               'lib', 'library']
 _SCRIPTS = ['revolut_cli.py', 'revolutbot.py', 'revolut_transactions.py']
+__version__ = get_version('revolut/__init__.py')
 # To delete here + 'scripts' dans setup()
 # if no command is used in the package
+
+with open('requirements.txt') as reqs_file:
+    requirements = reqs_file.read().splitlines()
 
 setup(
     name=_NAME,
@@ -31,8 +46,7 @@ setup(
     platforms='Posix; MacOS X',
     description=_DESCRIPTION,
     long_description=_DESCRIPTION,
-    author='Thibault Ducret',
-    author_email='thibault.ducret@gmail.com',
+    author='Laur',
     url=_URL_GITHUB,
     download_url='%s/tarball/%s' % (_URL_GITHUB, __version__),
     keywords=_MOTS_CLES,
