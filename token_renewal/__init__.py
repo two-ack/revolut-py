@@ -19,7 +19,7 @@ _URL_GET_TOKEN_STEP1 = API_BASE + "/signin"
 _URL_GET_TOKEN_STEP2 = API_BASE + "/signin/confirm"
 _URL_GET_TOKEN_STEP2_APP = API_BASE + '/token'
 _URL_SELFIE = API_BASE + '/biometric-signin/selfie'
-_URL_3FA_CONFIRM_TMPLT = API_BASE + '/biometric-signin/confirm/{}'
+_URL_3FA_CONFIRM_TMPLT = API_BASE + '/biometric-signin/confirm/{id}'
 _3FAT = "thirdFactorAuthAccessToken"
 
 
@@ -213,18 +213,17 @@ def signin_biometric(userId, access_token, conf) -> json:
     if not os.path.isfile(selfie_filepath):
         raise IOError('selected selfie file [{}] is not a valid file'.format(selfie_filepath))
 
-    token = token_encode(userId, access_token)
-    c = Client(conf=conf, token=token, renew_token=False)
-
     with open(selfie_filepath, 'rb') as f:
         # define 'files' so request file-part headers would look like:
         # Content-Disposition: form-data; name="selfie"; filename="selfie.jpg"
         # Content-Type: image/jpeg
         files = {'selfie': ('selfie.jpg', f, 'image/jpeg')}  # TODO: we're currently hardcoding mimetype to jpeg regardless of actual mime; same for filename. maybe enforce jpg input?
-        res = c._post(_URL_SELFIE, files=files)
 
-    biometric_id = res.json()["id"]
-    url = _URL_3FA_CONFIRM_TMPLT.format(biometric_id)
+    token = token_encode(userId, access_token)
+    c = Client(conf=conf, token=token, renew_token=False)
+    res = c._post(_URL_SELFIE, files=files)
+    biometric_id = res.json()['id']
+    url = _URL_3FA_CONFIRM_TMPLT.format(id=biometric_id)
 
     count = 0
     while True:

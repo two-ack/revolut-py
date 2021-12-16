@@ -1,9 +1,8 @@
 # revolut-py
 
-[![Travis](https://img.shields.io/travis/tducret/revolut-python.svg)](https://travis-ci.org/tducret/revolut-python)
+[![PyPI](https://img.shields.io/pypi/v/revolut-py.svg)](https://pypi.org/project/revolut-py)
 [![Coveralls github](https://img.shields.io/coveralls/github/tducret/revolut-python.svg)](https://coveralls.io/github/tducret/revolut-python)
-[![PyPI](https://img.shields.io/pypi/v/revolut.svg)](https://pypi.org/project/revolut/)
-![License](https://img.shields.io/github/license/tducret/revolut-python.svg)
+![License](https://img.shields.io/github/license/laur89/revolut-py.svg)
 
 # Description
 
