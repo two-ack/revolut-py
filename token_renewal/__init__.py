@@ -129,7 +129,7 @@ def get_token_step2(conf, token, simulate=False) -> json:
 
         if channel in ['EMAIL', 'SMS']:
             if provider_2fa:
-                code = str(provider_2fa()).replace("-", "").strip()
+                code = str(provider_2fa(phone=conf.get('phone'))).replace("-", "").strip()
                 if not is_valid_2fa_code(code):
                     raise ValueError('incorrect 2FA code provided by the automation: [{}]'.format(code))
             elif not conf.get('interactive'):
