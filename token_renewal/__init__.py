@@ -205,7 +205,7 @@ def signin_biometric(userId, access_token, conf) -> json:
         print()
         print("Selfie 3rd factor authentication was requested.")
         while True:
-            selfie_filepath = input("Provide a selfie image file path (800x600) [ex : selfie.png] ")
+            selfie_filepath = input("Provide a selfie image file path (800x600) [ex : selfie.jpg] ")
             if os.path.isfile(selfie_filepath):
                 break
             print('provided path [{}] does not correspond to valid file'.format(selfie_filepath))
@@ -219,7 +219,7 @@ def signin_biometric(userId, access_token, conf) -> json:
     c = Client(conf=conf, token=token, renew_token=False)
 
     with open(selfie_filepath, 'rb') as f:
-        # define 'files' so request's file-part headers would look like:
+        # define 'files' so request file-part headers would look like:
         # Content-Disposition: form-data; name="selfie"; filename="selfie.jpg"
         # Content-Type: image/jpeg
         files = {'selfie': ('selfie.jpg', f, 'image/jpeg')}

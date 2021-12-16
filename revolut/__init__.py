@@ -361,7 +361,7 @@ class Revolut:
         elif not isinstance(conf.get('persistedKeys'), (list, tuple)):
             raise TypeError('persistedKeys conf item not of type {list, tuple}')
 
-        # keep token logic for last, as renewal will possibly persist token+other data
+        # keep token logic for last, as renewal will possibly persist token+other data:
         if token and type(token) == str:
             conf['token'] = token
         elif not conf.get('token') or conf.get('expiry', 0) - time.time() <= 5:
