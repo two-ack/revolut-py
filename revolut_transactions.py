@@ -3,7 +3,6 @@
 
 import click
 import json
-import os
 
 from datetime import datetime
 from datetime import timedelta
@@ -68,6 +67,10 @@ from revolut import Revolut, __version__
     '--reverse', '-r',
     is_flag=True,
     help='reverse the order of the transactions displayed',
+)
+@click.version_option(
+    version=__version__,
+    message='%(prog)s, based on [revolut] package version %(version)s'
 )
 def main(device_id, token, password, phone, channel, language, from_date, to_date, output_format, reverse=False):
     """ Get the account balances on Revolut """

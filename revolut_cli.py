@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 import click
-import sys
 
 from revolut import Revolut, __version__
 
@@ -42,7 +41,7 @@ from revolut import Revolut, __version__
 @click.option(
     '--account', '-a',
     type=str,
-    help='account name (ex : "EUR CURRENT") to get the balance for the account'
+    help='account name (ex : "EUR CURRENT") to get the balance for'
  )
 @click.option(
     '--channel', '-c',
