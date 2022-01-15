@@ -258,7 +258,7 @@ def _write_conf(conf) -> None:
     for i in conf.get('persistedKeys'):
         if i in conf:
             data[i] = conf.get(i)
-    if not data: return
+    if not data: return  # TODO: or maybe we should still write regardless, eg if user no longer wants anything stored?
 
     try:
         with open(conf.get('accConf'), 'w') as f:
