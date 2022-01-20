@@ -9,7 +9,7 @@ steps:
   commands:
   - pip install -r requirements.txt
   - pip install pytest-cov
-  #- pip install .  # TODO: is this needed?
+  - pip install .  # TODO: is this needed?
   - ls -latr  # TODO debug, deleteme later
   - pytest || true
   - ls -latr  # TODO debug, deleteme later
