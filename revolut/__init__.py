@@ -24,6 +24,7 @@ from pathlib import Path
 from retry_decorator import retry
 from exceptions import TokenExpiredException, ApiChangedException
 
+# note the version is managed by zest.releaser
 __version__ = '0.1.4'
 
 API_ROOT = "https://app.revolut.com"
@@ -234,7 +235,7 @@ class Client:
         except:
             return False  # no valid json response, likely some other issue than token expiration
         # print('checking if expired response....{}, code key in reponse: {}'.format(ret.status_code, 'code' in j))
-        return ret.status_code == 401 and 'code' in j and j['code'] == 9039
+        return ret.status_code == 401 and j.get('code') == 9039
 
     def _make_call(self, method, f, url, expected_status_code, **kwargs) -> requests.Response:
         # print(' !!! EXEing {} make_call()'.format(method))
@@ -296,6 +297,7 @@ class Client:
 # TODO: make conf/cache scope local; allow passing in optional config dict? unsure how to handle persisting then
 #       - create a Cache/Config class?
 class Revolut:
+    # TODO: replace passing/accepting 'interactive' arg by resolving it via bool(getattr(sys, 'ps1', sys.flags.interactive)) ?
     def __init__(self, device_id=None, token=None,
                  password=None, phone=None, channel=None,
                  persisted_keys=None, provider_2fa=None,

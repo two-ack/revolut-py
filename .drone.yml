@@ -4,6 +4,7 @@ type: docker
 name: default
 
 steps:
+# TODO!! need to sort coveralls out
 - name: test
   image: python:3-alpine
   commands:

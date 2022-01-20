@@ -168,11 +168,10 @@ def get_token_step2(conf, token, simulate=False) -> json:
                 res = ret.json()
                 if ret.status_code == 200: break
 #             "text": "{\"message\":\"One should obtain consent from the user before continuing\",\"code\":9035}" response while waiting for app-based accepting
-                if 'code' not in res or res['code'] != 9035:
-                    code = res['code'] if 'code' in res else 'CODE_NOT_SENT'
+                if res.get('code') != 9035:
                     raise ConnectionError(
                         'sent error code for [{}] was unexpected: {}'.format(
-                            _URL_GET_TOKEN_STEP2_APP, code))
+                            _URL_GET_TOKEN_STEP2_APP, res.get('code', 'CODE_NOT_SENT')))
                 count += 1
 
         raw_get_token = res
