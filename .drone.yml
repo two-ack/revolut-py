@@ -4,16 +4,54 @@ type: docker
 name: default
 
 steps:
-# TODO!! need to sort coveralls out
 - name: test
   image: python:3-alpine
   commands:
   - pip install -r requirements.txt
   - pip install pytest-cov
-  - ls -latr
+  #- pip install .  # TODO: is this needed?
+  - ls -latr  # TODO debug, deleteme later
   - pytest
-  - ls -latr
+  - ls -latr  # TODO debug, deleteme later
+  #- coveralls  # superseded by coveralls drone plugin right?
+  when:
+    ref:
+    - refs/heads/feature/*
+  #when:
+    #event:
+    #- push
+    #- pull_request
+    #- promote
+    #- rollback
+  #event:
+    #exclude:
+    #- tag
 
+- name: version-tag-changelog
+  image: python:3-bullseye
+  commands:
+  - git config --global user.email "zest.releaser@example.com"
+  - git config --global user.name "Zest Releaser"
+  - pip install zest.releaser
+  - fullrelease --no-input
+  when:
+    branch:
+    - master
+
+- name: git-push
+  image: appleboy/drone-git-push
+  settings:
+    ssh_key:
+      from_secret: github_ssh_key
+    branch: "${DRONE_BRANCH}"
+    remote: "${DRONE_GIT_SSH_URL}"
+    force: false
+    followtags: true
+  when:
+    branch:
+    - master
+
+# TODO!! need to sort coveralls out
 - name: coveralls
   image: lizheming/drone-coveralls
   settings:
@@ -23,6 +61,28 @@ steps:
     # TODO: find out which file(s) are generated & need sending to coveralls:
     - ./lcov.info
 
+- name: build
+  image: python:3-alpine
+  commands:
+  - pip install build
+  - python -m build
+  when:
+    event: tag
+
+- name: github-release
+  image: plugins/github-release
+  settings:
+    api_key:
+      from_secret: github_token
+    files:
+      - dist/*
+    title: "${DRONE_TAG}"
+    #note: CHANGELOG.md
+    checksum:
+       - sha256
+  when:
+    event: tag
+
 - name: pypi-publish
   image: plugins/pypi
   settings:
@@ -30,6 +90,9 @@ steps:
       from_secret: public_pypi_username
     password:
       from_secret: public_pypi_password
+    distributions:
+    - sdist
+    - bdist_wheel
   when:
     event:
     - tag
