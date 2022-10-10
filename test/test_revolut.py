@@ -57,8 +57,8 @@ def test_class_Amount_errors():
         Amount(currency="BTC")
 
 
-def test_get_account_balances():
-    accounts = revolut.get_account_balances()
+def test_get_accounts():
+    accounts = revolut.get_accounts()
     assert len(accounts) > 0
 
     print()
@@ -166,16 +166,16 @@ def test_class_account():
 
 
 def test_class_accounts():
-    account_dicts = [{"balance": 10000, "currency": "EUR",
-                      "type": "CURRENT", "vault_name": "", "state": "ACTIVE"},
-                     {"balance": 550, "currency": "USD",
-                      "type": "CURRENT", "vault_name": "", "state": "ACTIVE"},
-                     {"balance": 0, "currency": "GBP", "vault_name": "",
+    account_dicts = [{"balance": 10000, "currency": "EUR", "isVault": False,
+                      "type": "CURRENT", "vaultName": "", "state": "ACTIVE"},
+                     {"balance": 550, "currency": "USD", "isVault": False,
+                      "type": "CURRENT", "vaultName": "", "state": "ACTIVE"},
+                     {"balance": 0, "currency": "GBP", "vaultName": "", "isVault": False,
                       "type": "CURRENT", "state": "INACTIVE"},
-                     {"balance": 1000000, "currency": "BTC",
-                      "type": "CURRENT", "vault_name": "", "state": "ACTIVE"},
-                     {"balance": 1000, "currency": "EUR",
-                      "vault_name": "My vault",
+                     {"balance": 1000000, "currency": "BTC", "isVault": False,
+                      "type": "CURRENT", "vaultName": "", "state": "ACTIVE"},
+                     {"balance": 1000, "currency": "EUR", "isVault": True,
+                      "vaultName": "My vault",
                       "type": "SAVINGS", "state": "ACTIVE"}]
 
     accounts = Accounts(account_dicts)
@@ -238,7 +238,7 @@ def test_get_token(capsys):
     if _SIMU_GET_TOKEN is not True:
         new_revolut = Revolut(token=token, device_id=_DEVICE_ID_TEST)
 
-        accounts = new_revolut.get_account_balances()
+        accounts = new_revolut.get_accounts()
         assert len(accounts) > 0
 
         print()

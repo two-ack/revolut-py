@@ -103,7 +103,7 @@ Quick example:
 from revolut import Revolut
 
 rev = Revolut(password=1234, phone='+33612345678', interactive=True)
-print(rev.get_account_balances().csv())
+print(rev.get_accounts().csv())
 ```
 
 
@@ -168,3 +168,4 @@ This project is forked from https://github.com/tducret/revolut-python
 - [ ] ~Create a RaspberryPi Dockerfile for revolutbot (to check if rates grows very often)~
 - [ ] ~Improve coverage for revolutbot~
 - [ ] Fix + improve tests
+- [ ] Cache requests, at least accounts call

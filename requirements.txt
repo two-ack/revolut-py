@@ -2,3 +2,4 @@ requests>=2.6.0
 click>=6.7
 appdirs>=1.4.4
 retry-deco>=0.0.1
+ppretty>=1.3

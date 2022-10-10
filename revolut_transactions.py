@@ -64,6 +64,12 @@ from revolut import Revolut, __version__
     default='csv',
 )
 @click.option(
+    '--debug', '-D',
+    is_flag=True,
+    default=False,
+    help='debug mode; increaases printouts',
+)
+@click.option(
     '--reverse', '-r',
     is_flag=True,
     help='reverse the order of the transactions displayed',
@@ -72,10 +78,13 @@ from revolut import Revolut, __version__
     version=__version__,
     message='%(prog)s, based on [revolut] package version %(version)s'
 )
-def main(device_id, token, password, phone, channel, language, from_date, to_date, output_format, reverse=False):
+def main(device_id, token, password, phone, channel, language, from_date, to_date, output_format, debug, reverse=False):
     """ Get the account balances on Revolut """
-    rev = Revolut(device_id=device_id, token=token, password=password, phone=phone, channel=channel, interactive=True)
+    rev = Revolut(device_id=device_id, token=token, password=password, phone=phone,
+                  channel=channel, debug=debug, interactive=True)
+
     account_transactions = rev.get_account_transactions(from_date, to_date)
+
     if output_format == 'csv':
         print(account_transactions.csv(lang=language, reverse=reverse))
     elif output_format == 'json':

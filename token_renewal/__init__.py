@@ -253,11 +253,7 @@ def _write_conf(conf) -> None:
     if not conf or not conf.get('accConf'):
         return
 
-    data = {}
-    for i in conf.get('persistedKeys'):
-        if i in conf:
-            data[i] = conf.get(i)
-    if not data: return  # TODO: or maybe we should still write regardless, eg if user no longer wants anything stored?
+    data = {i:conf[i] for i in conf.get('persistedKeys') if i in conf}
 
     try:
         with open(conf.get('accConf'), 'w') as f:

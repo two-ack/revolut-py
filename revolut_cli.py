@@ -48,15 +48,24 @@ from revolut import Revolut, __version__
     type=click.Choice(['EMAIL', 'SMS', 'APP']),
     help='auth channel to use',
  )
+@click.option(
+    '--debug', '-D',
+    is_flag=True,
+    default=False,
+    help='debug mode; increaases printouts',
+)
 @click.version_option(
     version=__version__,
     message='%(prog)s, based on [revolut] package version %(version)s'
 )
-def main(device_id, token, password, phone, language, account, channel):
+def main(device_id, token, password, phone, language, account, channel, debug):
     """ Get the account balances on Revolut """
 
-    rev = Revolut(device_id=device_id, token=token, password=password, phone=phone, channel=channel, interactive=True)
-    account_balances = rev.get_account_balances()
+    rev = Revolut(device_id=device_id, token=token, password=password,
+                  phone=phone, channel=channel, debug=debug, interactive=True)
+
+    account_balances = rev.get_accounts()
+
     if account:
         a = account_balances.get_account_by_name(account)
         if a:
